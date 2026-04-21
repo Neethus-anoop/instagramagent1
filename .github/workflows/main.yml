@@ -1,0 +1,64 @@
+name: Instagram Auto-Reply Bot
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Runs at the top of every hour
+  workflow_dispatch:
+    inputs:
+      post_url:
+        description: 'Instagram Post URL (e.g., https://www.instagram.com/p/XYZ/ or /reel/XYZ/)'
+        required: false
+      keyword:
+        description: 'Keyword to trigger the reply'
+        required: false
+      reply_text:
+        description: 'Reply text to post publicly'
+        required: false
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to commit state back to the repo
+      
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history to avoid merge conflicts
+          
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          
+      - name: Install Dependencies
+        run: pip install requests
+        
+      - name: Run Auto-Reply Bot
+        env:
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          INPUT_POST_URL: ${{ github.event.inputs.post_url }}
+          INPUT_KEYWORD: ${{ github.event.inputs.keyword }}
+          INPUT_REPLY: ${{ github.event.inputs.reply_text }}
+        run: python agent.py
+        
+      - name: Commit and Push State Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Force create files in case they don't exist yet
+          touch rules.json processed_comments.json
+          git add rules.json processed_comments.json
+          
+          # Check for changes and commit
+          if ! git diff-index --quiet HEAD; then
+            echo "Changes detected, committing state..."
+            git commit -m "chore: update bot state [skip ci]"
+            git pull --rebase origin main
+            git push
+          else
+            echo "No changes to commit."
+          fi
