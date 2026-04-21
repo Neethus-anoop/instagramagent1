@@ -1,31 +1,67 @@
+name: Instagram Bot Automations
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Runs automatically every hour to check for new comments
+  workflow_dispatch:
+    inputs:
+      post_url:
+        description: 'Target Post URL (Leave blank to just run the bot)'
+        required: false
+        type: string
+      keyword:
+        description: 'Trigger Keyword (e.g. link)'
+        required: false
+        type: string
+      reply_text:
+        description: 'Public Reply Text'
+        required: false
+        type: string
+
 jobs:
-  bot:
+  run-bot:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Opt in early to Node.js 24
     permissions:
       contents: write
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4   # keep updated to latest release
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Forces GitHub to fetch the full history, preventing conflicts
 
-      - name: Set up Python 3.10
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: pip install requests
 
-      - name: Run Auto-Reply Bot
+      - name: Run Agent
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-          IG_API_URL: ${{ secrets.IG_API_URL }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          # The inputs from the GitHub Web Form:
+          INPUT_POST_URL: ${{ inputs.post_url }}
+          INPUT_KEYWORD: ${{ inputs.keyword }}
+          INPUT_REPLY: ${{ inputs.reply_text }}
+        run: python agent.py
+
+      - name: Save Rules and Progress
         run: |
-          python -u <<EOF
-          import os, requests, json
-          POST_URL = os.getenv('IG_API_URL')
-          REPLY_TEXT = os.getenv('reply_text')
-          print("Replying to post:", POST_URL)
-          EOF
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          touch processed_comments.json rules.json
+          git add processed_comments.json rules.json
+          
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update bot rules and logs [skip ci]"
+            
+            # THE FIX: Download any new changes from GitHub before uploading
+            git pull --rebase origin main
+            
+            git push
+          else
+            echo "No new rules or comments to save."
+          fi
