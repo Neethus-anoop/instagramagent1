@@ -1,64 +1,31 @@
-name: Instagram Auto-Reply Bot
-
-on:
-  schedule:
-    - cron: '0 * * * *' # Runs at the top of every hour
-  workflow_dispatch:
-    inputs:
-      post_url:
-        description: 'Instagram Post URL (e.g., https://www.instagram.com/p/XYZ/ or /reel/XYZ/)'
-        required: false
-      keyword:
-        description: 'Keyword to trigger the reply'
-        required: false
-      reply_text:
-        description: 'Reply text to post publicly'
-        required: false
-
 jobs:
-  run-bot:
+  bot:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Opt in early to Node.js 24
     permissions:
-      contents: write # Needed to commit state back to the repo
-      
+      contents: write
+
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Full history to avoid merge conflicts
-          
+        uses: actions/checkout@v4   # keep updated to latest release
+
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          
+
       - name: Install Dependencies
         run: pip install requests
-        
+
       - name: Run Auto-Reply Bot
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-          IG_USER_ID: ${{ secrets.IG_USER_ID }}
-          INPUT_POST_URL: ${{ github.event.inputs.post_url }}
-          INPUT_KEYWORD: ${{ github.event.inputs.keyword }}
-          INPUT_REPLY: ${{ github.event.inputs.reply_text }}
-        run: python agent.py
-        
-      - name: Commit and Push State Changes
+          IG_API_URL: ${{ secrets.IG_API_URL }}
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Force create files in case they don't exist yet
-          touch rules.json processed_comments.json
-          git add rules.json processed_comments.json
-          
-          # Check for changes and commit
-          if ! git diff-index --quiet HEAD; then
-            echo "Changes detected, committing state..."
-            git commit -m "chore: update bot state [skip ci]"
-            git pull --rebase origin main
-            git push
-          else
-            echo "No changes to commit."
-          fi
+          python -u <<EOF
+          import os, requests, json
+          POST_URL = os.getenv('IG_API_URL')
+          REPLY_TEXT = os.getenv('reply_text')
+          print("Replying to post:", POST_URL)
+          EOF
